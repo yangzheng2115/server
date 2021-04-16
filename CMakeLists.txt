@@ -11,7 +11,7 @@ set(CMAKE_CXX_FLAGS "-fpermissive ${CMAKE_CXX_FLAGS}")
 
 include_directories(./)
 
-add_executable(service src/service.c)
+add_executable(service src/service.cpp)
 
 add_executable(double_service src/double_service.cpp)
 

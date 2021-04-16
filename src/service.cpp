@@ -1,3 +1,7 @@
+//
+// Created by yangzheng on 2021/4/15.
+//
+
 /*
 * BUILD COMMAND:
 * gcc -Wall -I/usr/local/ofed/include -O2 -o RDMA_RC_example -L/usr/local/ofed/lib64 -L/usr/local/ofed/lib -
@@ -526,7 +530,7 @@ static int resources_create(struct resources *res, struct config_t *config1) {
         goto resources_create_exit;
     }
     /* each side will send only one WR, so Completion Queue with 1 entry is enough */
-    cq_size = 1100;
+    cq_size = 100;
     res->cq = ibv_create_cq(res->ib_ctx, cq_size, NULL, NULL, 0);
     if (!res->cq) {
         fprintf(stderr, "failed to create CQ with %u entries\n", cq_size);
@@ -954,14 +958,6 @@ void data_send(int id) {
         fprintf(stderr, "failed to connect QPs\n");
         return;
     }
-    for (int i = 0; i < 1000; i++) {
-        int rc = post_receive(&res);
-        if (rc) {
-            fprintf(stderr, "failed to post RR\n");
-            return;
-        }
-        //printf("receive\n");
-    }
     while (1) {
         /* let the server post the sr */
         if (!config.server_name)
@@ -979,11 +975,6 @@ void data_send(int id) {
             fprintf(stderr, "poll completion failed\n");
             return;
         }
-        if (poll_completion(&res)) {
-            fprintf(stderr, "poll completion failed\n");
-            return;
-        }
-        we = post_receive(&res);
         if (num == 100000) {
             if (resources_destroy(&res)) {
                 fprintf(stderr, "failed to destroy resources\n");
@@ -1017,7 +1008,7 @@ void data_send(int id) {
 int main(int argc, char *argv[]) {
     struct resources res;
     int rc = 1;
-    int thread_num =1;
+    int thread_num = 1;
     char temp_char;
     /* parse the command line parameters */
     while (1) {
@@ -1085,7 +1076,7 @@ int main(int argc, char *argv[]) {
     /* create resources before using them */
     if (resources_create(&res, &config)) {
         fprintf(stderr, "failed to create resources\n");
-      goto main_exit;
+        goto main_exit;
     }
     /* connect the QPs */
     if (connect_qp(&res, &config)) {
