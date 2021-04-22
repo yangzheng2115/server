@@ -1,3 +1,7 @@
+//
+// Created by yangzheng on 2021/4/15.
+//
+
 /*
 * BUILD COMMAND:
 * gcc -Wall -I/usr/local/ofed/include -O2 -o RDMA_RC_example -L/usr/local/ofed/lib64 -L/usr/local/ofed/lib -
@@ -23,7 +27,6 @@ libverbs RDMA_RC_example.c
 #include <stdint.h>
 #include <inttypes.h>
 #include <endian.h>
-#include <time.h>
 #include <byteswap.h>
 #include <getopt.h>
 #include <iostream>
@@ -94,8 +97,6 @@ struct config_t config = {
         8033, /* tcp_port */
         1,     /* ib_port */
         -1 /* gid_idx */};
-
-struct timespec tim,tim2;
 
 long *timelist;
 
@@ -271,7 +272,7 @@ End of socket operations
 *
 ******************************************************************************/
 static int poll_completion(struct resources *res) {
-    struct ibv_wc wc;
+    struct ibv_wc wc,wcl[64];
     unsigned long start_time_msec;
     unsigned long cur_time_msec;
     struct timeval cur_time;
@@ -322,8 +323,8 @@ static int poll_completion(struct resources *res) {
 * This function will create and post a send work request
 ******************************************************************************/
 static int post_send(struct resources *res, int opcode) {
-    struct ibv_send_wr sr;
-    struct ibv_sge sge;
+    struct ibv_send_wr sr,srl[64];
+    struct ibv_sge sge,sgl[64];
     struct ibv_send_wr *bad_wr = NULL;
     int rc;
     /* prepare the scatter/gather entry */
@@ -344,8 +345,27 @@ static int post_send(struct resources *res, int opcode) {
         sr.wr.rdma.remote_addr = res->remote_props.addr;
         sr.wr.rdma.rkey = res->remote_props.rkey;
     }
+    int batch = 4;
+    for(int i =0;i< batch;i++){
+        sgl[i].addr = (uintptr_t) res->buf;
+        sgl[i].length = MSG_SIZE;
+        sgl[i].lkey = res->mr->lkey;
+        /* prepare the send work request */
+        srl[i].wr_id = 0;
+        srl[i].sg_list = &sgl[i];
+        srl[i].num_sge = 1;
+        srl[i].opcode = opcode;
+        if(i != batch -1){
+            srl[i].next = &srl[i+1];
+            srl[i].send_flags = 0;
+        }else{
+            srl[i].next = NULL;
+            srl[i].send_flags = IBV_SEND_SIGNALED;
+        }
+        srl[i].send_flags |= IBV_SEND_INLINE;
+    }
     /* there is a Receive Request in the responder side, so we won't get any into RNR flow */
-    rc = ibv_post_send(res->qp, &sr, &bad_wr);
+    rc = ibv_post_send(res->qp, &srl[0], &bad_wr);
     if (rc)
         fprintf(stderr, "failed to post SR\n");
     else {
@@ -531,7 +551,7 @@ static int resources_create(struct resources *res, struct config_t *config1) {
         goto resources_create_exit;
     }
     /* each side will send only one WR, so Completion Queue with 1 entry is enough */
-    cq_size = 1100;
+    cq_size = 100;
     res->cq = ibv_create_cq(res->ib_ctx, cq_size, NULL, NULL, 0);
     if (!res->cq) {
         fprintf(stderr, "failed to create CQ with %u entries\n", cq_size);
@@ -960,14 +980,6 @@ void data_send(int id) {
         fprintf(stderr, "failed to connect QPs\n");
         return;
     }
-    for (int i = 0; i < 1000; i++) {
-        int rc = post_receive(&res);
-        if (rc) {
-            fprintf(stderr, "failed to post RR\n");
-            return;
-        }
-        //printf("receive\n");
-    }
     while (1) {
         /* let the server post the sr */
         if (!config.server_name)
@@ -976,18 +988,17 @@ void data_send(int id) {
                 fprintf(stderr, "failed to post sr\n");
                 return;
             }
+        //printf("send\n");
         num++;
+        //printf("%d\n",num);
         //sleep(1);
         /* in both sides we expect to get a completion */
         if (poll_completion(&res)) {
             fprintf(stderr, "poll completion failed\n");
             return;
         }
-        if (poll_completion(&res)) {
-            fprintf(stderr, "poll completion failed\n");
-            return;
-        }
-        we = post_receive(&res);
+        cout<<"success"<<endl;
+        return;
         if (num == 100000) {
             if (resources_destroy(&res)) {
                 fprintf(stderr, "failed to destroy resources\n");
@@ -996,6 +1007,9 @@ void data_send(int id) {
             printf("success\n");
             return;
         }
+        //char mm[20];
+        //memcpy(mm,res.buf+20*MSG_SIZE,MSG_SIZE);
+        //fprintf(stdout, "Message is: '%s'\n", mm);
     }
 }
 
@@ -1018,7 +1032,7 @@ void data_send(int id) {
 int main(int argc, char *argv[]) {
     struct resources res;
     int rc = 1;
-    int thread_num =1;
+    int thread_num = 1;
     char temp_char;
     /* parse the command line parameters */
     while (1) {
@@ -1090,7 +1104,7 @@ int main(int argc, char *argv[]) {
     /* create resources before using them */
     if (resources_create(&res, &config)) {
         fprintf(stderr, "failed to create resources\n");
-      goto main_exit;
+        goto main_exit;
     }
     /* connect the QPs */
     if (connect_qp(&res, &config)) {

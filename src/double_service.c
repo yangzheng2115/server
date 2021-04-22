@@ -1,3 +1,7 @@
+//
+// Created by yangzheng on 2021/4/14.
+//
+
 /*
 * BUILD COMMAND:
 * gcc -Wall -I/usr/local/ofed/include -O2 -o RDMA_RC_example -L/usr/local/ofed/lib64 -L/usr/local/ofed/lib -
@@ -23,20 +27,14 @@ libverbs RDMA_RC_example.c
 #include <stdint.h>
 #include <inttypes.h>
 #include <endian.h>
-#include <time.h>
 #include <byteswap.h>
 #include <getopt.h>
-#include <iostream>
-#include <vector>
-#include <thread>
 #include <sys/time.h>
 #include <arpa/inet.h>
 #include <infiniband/verbs.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
-
-using namespace std;
 /* poll CQ timeout in millisec (2 seconds) */
 #define MAX_POLL_CQ_TIMEOUT 2000
 #define MSG "SEND operation "
@@ -44,11 +42,8 @@ using namespace std;
 #define RDMAMSGW "RDMA write operation"
 #define MSG_SIZE (strlen(MSG) + 1)
 #if __BYTE_ORDER == __LITTLE_ENDIAN
-
 static inline uint64_t htonll(uint64_t x) { return bswap_64(x); }
-
 static inline uint64_t ntohll(uint64_t x) { return bswap_64(x); }
-
 #elif __BYTE_ORDER == __BIG_ENDIAN
 static inline uint64_t htonll(uint64_t x) { return x; }
 static inline uint64_t ntohll(uint64_t x) { return x; }
@@ -56,73 +51,48 @@ static inline uint64_t ntohll(uint64_t x) { return x; }
 #error __BYTE_ORDER is neither __LITTLE_ENDIAN nor __BIG_ENDIAN
 #endif
 /* structure of test parameters */
-struct config_t {
+struct config_t
+{
     const char *dev_name; /* IB device name */
-    char *server_name;    /* server host name */
+    char *server_name;	/* server host name */
     u_int32_t tcp_port;   /* server TCP port */
-    int ib_port;          /* local IB port to work with */
-    int gid_idx;          /* gid index to use */
+    int ib_port;		  /* local IB port to work with */
+    int gid_idx;		  /* gid index to use */
 };
 /* structure to exchange data which is needed to connect the QPs */
-struct cm_con_data_t {
+struct cm_con_data_t
+{
     uint64_t addr;   /* Buffer address */
     uint32_t rkey;   /* Remote key */
     uint32_t qp_num; /* QP number */
-    uint16_t lid;    /* LID of the IB port */
+    uint16_t lid;	/* LID of the IB port */
     uint8_t gid[16]; /* gid */
 } __attribute__((packed));
 
 /* structure of system resources */
-struct resources {
+struct resources
+{
     struct ibv_device_attr
             device_attr;
     /* Device attributes */
-    struct ibv_port_attr port_attr;    /* IB port attributes */
+    struct ibv_port_attr port_attr;	/* IB port attributes */
     struct cm_con_data_t remote_props; /* values to connect to remote side */
-    struct ibv_context *ib_ctx;           /* device handle */
-    struct ibv_pd *pd;                   /* PD handle */
-    struct ibv_cq *cq;                   /* CQ handle */
-    struct ibv_qp *qp;                   /* QP handle */
-    struct ibv_mr *mr;                   /* MR handle for buf */
-    char *buf;                           /* memory buffer pointer, used for RDMA and send
+    struct ibv_context *ib_ctx;		   /* device handle */
+    struct ibv_pd *pd;				   /* PD handle */
+    struct ibv_cq *cq;				   /* CQ handle */
+    struct ibv_qp *qp;				   /* QP handle */
+    struct ibv_mr *mr;				   /* MR handle for buf */
+    char *buf;						   /* memory buffer pointer, used for RDMA and send
 ops */
-    int sock;                           /* TCP socket file descriptor */
+    int sock;						   /* TCP socket file descriptor */
 };
 struct config_t config = {
         NULL,  /* dev_name */
         NULL,  /* server_name */
-        8033, /* tcp_port */
-        1,     /* ib_port */
+        19875, /* tcp_port */
+        1,	 /* ib_port */
         -1 /* gid_idx */};
 
-struct timespec tim,tim2;
-
-long *timelist;
-
-int numa_flag = 0;
-
-static int resources_destroy(struct resources *res);
-
-static void resources_init(struct resources *res);
-
-//static int resources_create(struct resources *res);
-static int resources_create(struct resources *res, struct config_t *config1);
-
-//static int connect_qp(struct resources *res);
-static int connect_qp(struct resources *res, struct config_t *config1);
-
-static int post_receive(struct resources *res);
-
-static int post_send(struct resources *res, int opcode);
-
-static int poll_completion(struct resources *res);
-
-void pin_to_core(size_t core) {
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(core, &cpuset);
-    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-}
 /******************************************************************************
 Socket operations
 For simplicity, the example program uses TCP sockets to exchange control
@@ -149,7 +119,8 @@ this example
 * indicated port for an incoming connection.
 *
 ******************************************************************************/
-static int sock_connect(const char *servername, int port) {
+static int sock_connect(const char *servername, int port)
+{
     struct addrinfo *resolved_addr = NULL;
     struct addrinfo *iterator;
     char service[6];
@@ -165,22 +136,28 @@ static int sock_connect(const char *servername, int port) {
         goto sock_connect_exit;
     /* Resolve DNS address, use sockfd as temp storage */
     sockfd = getaddrinfo(servername, service, &hints, &resolved_addr);
-    if (sockfd < 0) {
+    if (sockfd < 0)
+    {
         fprintf(stderr, "%s for %s:%d\n", gai_strerror(sockfd), servername, port);
         goto sock_connect_exit;
     }
     /* Search through results and find the one we want */
-    for (iterator = resolved_addr; iterator; iterator = iterator->ai_next) {
+    for (iterator = resolved_addr; iterator; iterator = iterator->ai_next)
+    {
         sockfd = socket(iterator->ai_family, iterator->ai_socktype, iterator->ai_protocol);
-        if (sockfd >= 0) {
-            if (servername) {
+        if (sockfd >= 0)
+        {
+            if (servername){
                 /* Client mode. Initiate connection to remote */
-                if ((tmp = connect(sockfd, iterator->ai_addr, iterator->ai_addrlen))) {
+                if ((tmp = connect(sockfd, iterator->ai_addr, iterator->ai_addrlen)))
+                {
                     fprintf(stdout, "failed connect \n");
                     close(sockfd);
                     sockfd = -1;
                 }
-            } else {
+            }
+            else
+            {
                 /* Server mode. Set up listening socket an accept a connection */
                 listenfd = sockfd;
                 sockfd = -1;
@@ -196,17 +173,18 @@ static int sock_connect(const char *servername, int port) {
         close(listenfd);
     if (resolved_addr)
         freeaddrinfo(resolved_addr);
-    if (sockfd < 0) {
+    if (sockfd < 0)
+    {
         if (servername)
             fprintf(stderr, "Couldn't connect to %s:%d\n", servername, port);
-        else {
+        else
+        {
             perror("server accept");
             fprintf(stderr, "accept() failed\n");
         }
     }
     return sockfd;
 }
-
 /******************************************************************************
 * Function: sock_sync_data
 *
@@ -231,7 +209,8 @@ static int sock_connect(const char *servername, int port) {
 * received from the remote.
 *
 ******************************************************************************/
-int sock_sync_data(int sock, int xfer_size, char *local_data, char *remote_data) {
+int sock_sync_data(int sock, int xfer_size, char *local_data, char *remote_data)
+{
     int rc;
     int read_bytes = 0;
     int total_read_bytes = 0;
@@ -240,7 +219,8 @@ int sock_sync_data(int sock, int xfer_size, char *local_data, char *remote_data)
         fprintf(stderr, "Failed writing data during sock_sync_data\n");
     else
         rc = 0;
-    while (!rc && total_read_bytes < xfer_size) {
+    while (!rc && total_read_bytes < xfer_size)
+    {
         read_bytes = read(sock, remote_data, xfer_size);
         if (read_bytes > 0)
             total_read_bytes += read_bytes;
@@ -270,7 +250,8 @@ End of socket operations
 * poll the queue until MAX_POLL_CQ_TIMEOUT milliseconds have passed.
 *
 ******************************************************************************/
-static int poll_completion(struct resources *res) {
+static int poll_completion(struct resources *res)
+{
     struct ibv_wc wc;
     unsigned long start_time_msec;
     unsigned long cur_time_msec;
@@ -280,23 +261,30 @@ static int poll_completion(struct resources *res) {
     /* poll the completion for a while before giving up of doing it .. */
     gettimeofday(&cur_time, NULL);
     start_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
-    do {
+    do
+    {
         poll_result = ibv_poll_cq(res->cq, 1, &wc);
         gettimeofday(&cur_time, NULL);
         cur_time_msec = (cur_time.tv_sec * 1000) + (cur_time.tv_usec / 1000);
     } while ((poll_result == 0) && ((cur_time_msec - start_time_msec) < MAX_POLL_CQ_TIMEOUT));
-    if (poll_result < 0) {
+    if (poll_result < 0)
+    {
         /* poll CQ failed */
         fprintf(stderr, "poll CQ failed\n");
         rc = 1;
-    } else if (poll_result == 0) { /* the CQ is empty */
+    }
+    else if (poll_result == 0)
+    { /* the CQ is empty */
         fprintf(stderr, "completion wasn't found in the CQ after timeout\n");
         rc = 1;
-    } else {
+    }
+    else
+    {
         /* CQE found */
         //fprintf(stdout, "completion was found in CQ with status 0x%x\n", wc.status);
         /* check the completion status (here we don't care about the completion opcode */
-        if (wc.status != IBV_WC_SUCCESS) {
+        if (wc.status != IBV_WC_SUCCESS)
+        {
             fprintf(stderr, "got bad completion with status: 0x%x, vendor syndrome: 0x%x\n", wc.status,
                     wc.vendor_err);
             rc = 1;
@@ -304,7 +292,6 @@ static int poll_completion(struct resources *res) {
     }
     return rc;
 }
-
 /******************************************************************************
 * Function: post_send
 *
@@ -321,14 +308,15 @@ static int poll_completion(struct resources *res) {
 * Description
 * This function will create and post a send work request
 ******************************************************************************/
-static int post_send(struct resources *res, int opcode) {
+static int post_send(struct resources *res, int opcode)
+{
     struct ibv_send_wr sr;
     struct ibv_sge sge;
     struct ibv_send_wr *bad_wr = NULL;
     int rc;
     /* prepare the scatter/gather entry */
     memset(&sge, 0, sizeof(sge));
-    sge.addr = (uintptr_t) res->buf;
+    sge.addr = (uintptr_t)res->buf;
     sge.length = MSG_SIZE;
     sge.lkey = res->mr->lkey;
     /* prepare the send work request */
@@ -340,7 +328,8 @@ static int post_send(struct resources *res, int opcode) {
     sr.opcode = opcode;
     sr.send_flags = IBV_SEND_SIGNALED;
     //sr.send_flags|= IBV_SEND_INLINE;
-    if (opcode != IBV_WR_SEND) {
+    if (opcode != IBV_WR_SEND)
+    {
         sr.wr.rdma.remote_addr = res->remote_props.addr;
         sr.wr.rdma.rkey = res->remote_props.rkey;
     }
@@ -348,8 +337,10 @@ static int post_send(struct resources *res, int opcode) {
     rc = ibv_post_send(res->qp, &sr, &bad_wr);
     if (rc)
         fprintf(stderr, "failed to post SR\n");
-    else {
-        switch (opcode) {
+    else
+    {
+        switch (opcode)
+        {
             case IBV_WR_SEND:
                 //fprintf(stdout, "Send Request was posted\n");
                 break;
@@ -366,7 +357,6 @@ static int post_send(struct resources *res, int opcode) {
     }
     return rc;
 }
-
 /******************************************************************************
 * Function: post_receive
 *
@@ -382,14 +372,15 @@ static int post_send(struct resources *res, int opcode) {
 * Description
 *
 ******************************************************************************/
-static int post_receive(struct resources *res) {
+static int post_receive(struct resources *res)
+{
     struct ibv_recv_wr rr;
     struct ibv_sge sge;
     struct ibv_recv_wr *bad_wr;
     int rc;
     /* prepare the scatter/gather entry */
     memset(&sge, 0, sizeof(sge));
-    sge.addr = (uintptr_t) (res->buf + MSG_SIZE * 20);
+    sge.addr = (uintptr_t)(res->buf+MSG_SIZE*20);
     sge.length = MSG_SIZE;
     sge.lkey = res->mr->lkey;
     /* prepare the receive work request */
@@ -406,7 +397,6 @@ static int post_receive(struct resources *res) {
     //    fprintf(stdout, "Receive Request was posted\n");
     return rc;
 }
-
 /******************************************************************************
 * Function: resources_init
 *
@@ -422,11 +412,11 @@ static int post_receive(struct resources *res) {
 * Description
 * res is initialized to default values
 ******************************************************************************/
-static void resources_init(struct resources *res) {
+static void resources_init(struct resources *res)
+{
     memset(res, 0, sizeof *res);
     res->sock = -1;
 }
-
 /******************************************************************************
 * Function: resources_create
 *
@@ -444,7 +434,8 @@ static void resources_init(struct resources *res) {
 * This function creates and allocates all necessary system resources. These
 * are stored in res.
 *****************************************************************************/
-static int resources_create(struct resources *res, struct config_t *config1) {
+static int resources_create(struct resources *res)
+{
     struct ibv_device **dev_list = NULL;
     struct ibv_qp_init_attr qp_init_attr;
     struct ibv_device *ib_dev = NULL;
@@ -455,61 +446,73 @@ static int resources_create(struct resources *res, struct config_t *config1) {
     int num_devices;
     int rc = 0;
     /* if client side */
-    if (config1->server_name) {
-        res->sock = sock_connect(config1->server_name, config1->tcp_port);
-        if (res->sock < 0) {
+    if (config.server_name)
+    {
+        res->sock = sock_connect(config.server_name, config.tcp_port);
+        if (res->sock < 0)
+        {
             fprintf(stderr, "failed to establish TCP connection to server %s, port %d\n",
-                    config1->server_name, config1->tcp_port);
-            rc = -1;
-            goto resources_create_exit;
-        }
-    } else {
-        //fprintf(stdout, "waiting on port %d for TCP connection\n", config1->tcp_port);
-        res->sock = sock_connect(NULL, config1->tcp_port);
-        if (res->sock < 0) {
-            fprintf(stderr, "failed to establish TCP connection with client on port %d\n",
-                    config1->tcp_port);
+                    config.server_name, config.tcp_port);
             rc = -1;
             goto resources_create_exit;
         }
     }
-    //fprintf(stdout, "TCP connection was established\n");
-    //fprintf(stdout, "searching for IB devices in host\n");
+    else
+    {
+        fprintf(stdout, "waiting on port %d for TCP connection\n", config.tcp_port);
+        res->sock = sock_connect(NULL, config.tcp_port);
+        if (res->sock < 0)
+        {
+            fprintf(stderr, "failed to establish TCP connection with client on port %d\n",
+                    config.tcp_port);
+            rc = -1;
+            goto resources_create_exit;
+        }
+    }
+    fprintf(stdout, "TCP connection was established\n");
+    fprintf(stdout, "searching for IB devices in host\n");
     /* get device names in the system */
     dev_list = ibv_get_device_list(&num_devices);
-    if (!dev_list) {
+    if (!dev_list)
+    {
         fprintf(stderr, "failed to get IB devices list\n");
         rc = 1;
         goto resources_create_exit;
     }
     /* if there isn't any IB device in host */
-    if (!num_devices) {
+    if (!num_devices)
+    {
         fprintf(stderr, "found %d device(s)\n", num_devices);
         rc = 1;
         goto resources_create_exit;
     }
     fprintf(stdout, "found %d device(s)\n", num_devices);
     /* search for the specific device we want to work with */
-    for (i = 0; i < num_devices; i++) {
-        if (!config1->dev_name) {
-            config1->dev_name = strdup(ibv_get_device_name(dev_list[i]));
-            fprintf(stdout, "device not specified, using first one found: %s\n", config1->dev_name);
+    for (i = 0; i < num_devices; i++)
+    {
+        if (!config.dev_name)
+        {
+            config.dev_name = strdup(ibv_get_device_name(dev_list[i]));
+            fprintf(stdout, "device not specified, using first one found: %s\n", config.dev_name);
         }
-        if (!strcmp(ibv_get_device_name(dev_list[i]), config1->dev_name)) {
+        if (!strcmp(ibv_get_device_name(dev_list[i]), config.dev_name))
+        {
             ib_dev = dev_list[i];
             break;
         }
     }
     /* if the device wasn't found in host */
-    if (!ib_dev) {
-        fprintf(stderr, "IB device %s wasn't found\n", config1->dev_name);
+    if (!ib_dev)
+    {
+        fprintf(stderr, "IB device %s wasn't found\n", config.dev_name);
         rc = 1;
         goto resources_create_exit;
     }
     /* get device handle */
     res->ib_ctx = ibv_open_device(ib_dev);
-    if (!res->ib_ctx) {
-        fprintf(stderr, "failed to open device %s\n", config1->dev_name);
+    if (!res->ib_ctx)
+    {
+        fprintf(stderr, "failed to open device %s\n", config.dev_name);
         rc = 1;
         goto resources_create_exit;
     }
@@ -518,14 +521,16 @@ static int resources_create(struct resources *res, struct config_t *config1) {
     dev_list = NULL;
     ib_dev = NULL;
     /* query port properties */
-    if (ibv_query_port(res->ib_ctx, config1->ib_port, &res->port_attr)) {
-        fprintf(stderr, "ibv_query_port on port %u failed\n", config1->ib_port);
+    if (ibv_query_port(res->ib_ctx, config.ib_port, &res->port_attr))
+    {
+        fprintf(stderr, "ibv_query_port on port %u failed\n", config.ib_port);
         rc = 1;
         goto resources_create_exit;
     }
     /* allocate Protection Domain */
     res->pd = ibv_alloc_pd(res->ib_ctx);
-    if (!res->pd) {
+    if (!res->pd)
+    {
         fprintf(stderr, "ibv_alloc_pd failed\n");
         rc = 1;
         goto resources_create_exit;
@@ -533,30 +538,35 @@ static int resources_create(struct resources *res, struct config_t *config1) {
     /* each side will send only one WR, so Completion Queue with 1 entry is enough */
     cq_size = 1100;
     res->cq = ibv_create_cq(res->ib_ctx, cq_size, NULL, NULL, 0);
-    if (!res->cq) {
+    if (!res->cq)
+    {
         fprintf(stderr, "failed to create CQ with %u entries\n", cq_size);
         rc = 1;
         goto resources_create_exit;
     }
     /* allocate the memory buffer that will hold the data */
-    size = MSG_SIZE * 100;
-    res->buf = (char *) malloc(size);
-    if (!res->buf) {
+    size = MSG_SIZE*100;
+    res->buf = (char *)malloc(size);
+    if (!res->buf)
+    {
         fprintf(stderr, "failed to malloc %Zu bytes to memory buffer\n", size);
         rc = 1;
         goto resources_create_exit;
     }
     memset(res->buf, 0, size);
     /* only in the server side put the message in the memory buffer */
-    if (!config1->server_name) {
+    if (!config.server_name)
+    {
         strcpy(res->buf, MSG);
         fprintf(stdout, "going to send the message: '%s'\n", res->buf);
-    } else
+    }
+    else
         memset(res->buf, 0, size);
     /* register the memory buffer */
     mr_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
     res->mr = ibv_reg_mr(res->pd, res->buf, size, mr_flags);
-    if (!res->mr) {
+    if (!res->mr)
+    {
         fprintf(stderr, "ibv_reg_mr failed with mr_flags=0x%x\n", mr_flags);
         rc = 1;
         goto resources_create_exit;
@@ -574,44 +584,54 @@ static int resources_create(struct resources *res, struct config_t *config1) {
     qp_init_attr.cap.max_send_sge = 1;
     qp_init_attr.cap.max_recv_sge = 1;
     res->qp = ibv_create_qp(res->pd, &qp_init_attr);
-    if (!res->qp) {
+    if (!res->qp)
+    {
         fprintf(stderr, "failed to create QP\n");
         rc = 1;
         goto resources_create_exit;
     }
     fprintf(stdout, "QP was created, QP number=0x%x\n", res->qp->qp_num);
     resources_create_exit:
-    if (rc) {
+    if (rc)
+    {
         /* Error encountered, cleanup */
-        if (res->qp) {
+        if (res->qp)
+        {
             ibv_destroy_qp(res->qp);
             res->qp = NULL;
         }
-        if (res->mr) {
+        if (res->mr)
+        {
             ibv_dereg_mr(res->mr);
             res->mr = NULL;
         }
-        if (res->buf) {
+        if (res->buf)
+        {
             free(res->buf);
             res->buf = NULL;
         }
-        if (res->cq) {
+        if (res->cq)
+        {
             ibv_destroy_cq(res->cq);
             res->cq = NULL;
         }
-        if (res->pd) {
+        if (res->pd)
+        {
             ibv_dealloc_pd(res->pd);
             res->pd = NULL;
         }
-        if (res->ib_ctx) {
+        if (res->ib_ctx)
+        {
             ibv_close_device(res->ib_ctx);
             res->ib_ctx = NULL;
         }
-        if (dev_list) {
+        if (dev_list)
+        {
             ibv_free_device_list(dev_list);
             dev_list = NULL;
         }
-        if (res->sock >= 0) {
+        if (res->sock >= 0)
+        {
             if (close(res->sock))
                 fprintf(stderr, "failed to close socket\n");
             res->sock = -1;
@@ -619,7 +639,6 @@ static int resources_create(struct resources *res, struct config_t *config1) {
     }
     return rc;
 }
-
 /******************************************************************************
 * Function: modify_qp_to_init
 *
@@ -635,7 +654,8 @@ static int resources_create(struct resources *res, struct config_t *config1) {
 * Description
 * Transition a QP from the RESET to INIT state
 ******************************************************************************/
-static int modify_qp_to_init(struct ibv_qp *qp) {
+static int modify_qp_to_init(struct ibv_qp *qp)
+{
     struct ibv_qp_attr attr;
     int flags;
     int rc;
@@ -650,7 +670,6 @@ static int modify_qp_to_init(struct ibv_qp *qp) {
         fprintf(stderr, "failed to modify QP state to INIT\n");
     return rc;
 }
-
 /******************************************************************************
 * Function: modify_qp_to_rtr
 *
@@ -669,7 +688,8 @@ static int modify_qp_to_init(struct ibv_qp *qp) {
 * Description
 * Transition a QP from the INIT to RTR state, using the specified QP number
 ******************************************************************************/
-static int modify_qp_to_rtr(struct ibv_qp *qp, uint32_t remote_qpn, uint16_t dlid, uint8_t *dgid) {
+static int modify_qp_to_rtr(struct ibv_qp *qp, uint32_t remote_qpn, uint16_t dlid, uint8_t *dgid)
+{
     struct ibv_qp_attr attr;
     int flags;
     int rc;
@@ -685,7 +705,8 @@ static int modify_qp_to_rtr(struct ibv_qp *qp, uint32_t remote_qpn, uint16_t dli
     attr.ah_attr.sl = 0;
     attr.ah_attr.src_path_bits = 0;
     attr.ah_attr.port_num = config.ib_port;
-    if (config.gid_idx >= 0) {
+    if (config.gid_idx >= 0)
+    {
         attr.ah_attr.is_global = 1;
         attr.ah_attr.port_num = 1;
         memcpy(&attr.ah_attr.grh.dgid, dgid, 16);
@@ -701,7 +722,6 @@ static int modify_qp_to_rtr(struct ibv_qp *qp, uint32_t remote_qpn, uint16_t dli
         fprintf(stderr, "failed to modify QP state to RTR\n");
     return rc;
 }
-
 /******************************************************************************
 * Function: modify_qp_to_rts
 *
@@ -717,7 +737,8 @@ static int modify_qp_to_rtr(struct ibv_qp *qp, uint32_t remote_qpn, uint16_t dli
 * Description
 * Transition a QP from the RTR to RTS state
 ******************************************************************************/
-static int modify_qp_to_rts(struct ibv_qp *qp) {
+static int modify_qp_to_rts(struct ibv_qp *qp)
+{
     struct ibv_qp_attr attr;
     int flags;
     int rc;
@@ -735,7 +756,6 @@ static int modify_qp_to_rts(struct ibv_qp *qp) {
         fprintf(stderr, "failed to modify QP state to RTS\n");
     return rc;
 }
-
 /******************************************************************************
 * Function: connect_qp
 *
@@ -751,29 +771,34 @@ static int modify_qp_to_rts(struct ibv_qp *qp) {
 * Description
 * Connect the QP. Transition the server side to RTR, sender side to RTS
 ******************************************************************************/
-static int connect_qp(struct resources *res, struct config_t *config1) {
+static int connect_qp(struct resources *res)
+{
     struct cm_con_data_t local_con_data;
     struct cm_con_data_t remote_con_data;
     struct cm_con_data_t tmp_con_data;
     int rc = 0;
     char temp_char;
     union ibv_gid my_gid;
-    if (config1->gid_idx >= 0) {
-        rc = ibv_query_gid(res->ib_ctx, config1->ib_port, config1->gid_idx, &my_gid);
-        if (rc) {
-            fprintf(stderr, "could not get gid for port %d, index %d\n", config1->ib_port, config1->gid_idx);
+    if (config.gid_idx >= 0)
+    {
+        rc = ibv_query_gid(res->ib_ctx, config.ib_port, config.gid_idx, &my_gid);
+        if (rc)
+        {
+            fprintf(stderr, "could not get gid for port %d, index %d\n", config.ib_port, config.gid_idx);
             return rc;
         }
-    } else
+    }
+    else
         memset(&my_gid, 0, sizeof my_gid);
     /* exchange using TCP sockets info required to connect QPs */
-    local_con_data.addr = htonll((uintptr_t) res->buf);
+    local_con_data.addr = htonll((uintptr_t)res->buf);
     local_con_data.rkey = htonl(res->mr->rkey);
     local_con_data.qp_num = htonl(res->qp->qp_num);
     local_con_data.lid = htons(res->port_attr.lid);
     memcpy(local_con_data.gid, &my_gid, 16);
     fprintf(stdout, "\nLocal LID = 0x%x\n", res->port_attr.lid);
-    if (sock_sync_data(res->sock, sizeof(struct cm_con_data_t), (char *) &local_con_data, (char *) &tmp_con_data) < 0) {
+    if (sock_sync_data(res->sock, sizeof(struct cm_con_data_t), (char *)&local_con_data, (char *)&tmp_con_data) < 0)
+    {
         fprintf(stderr, "failed to exchange connection data between sides\n");
         rc = 1;
         goto connect_qp_exit;
@@ -785,37 +810,43 @@ static int connect_qp(struct resources *res, struct config_t *config1) {
     memcpy(remote_con_data.gid, tmp_con_data.gid, 16);
     /* save the remote side attributes, we will need it for the post SR */
     res->remote_props = remote_con_data;
-    //fprintf(stdout, "Remote address = 0x%" PRIx64 "\n", remote_con_data.addr);
-    //fprintf(stdout, "Remote rkey = 0x%x\n", remote_con_data.rkey);
-    //fprintf(stdout, "Remote QP number = 0x%x\n", remote_con_data.qp_num);
-    //fprintf(stdout, "Remote LID = 0x%x\n", remote_con_data.lid);
-    if (config1->gid_idx >= 0) {
+    fprintf(stdout, "Remote address = 0x%" PRIx64 "\n", remote_con_data.addr);
+    fprintf(stdout, "Remote rkey = 0x%x\n", remote_con_data.rkey);
+    fprintf(stdout, "Remote QP number = 0x%x\n", remote_con_data.qp_num);
+    fprintf(stdout, "Remote LID = 0x%x\n", remote_con_data.lid);
+    if (config.gid_idx >= 0)
+    {
         uint8_t *p = remote_con_data.gid;
-        //fprintf(stdout, "Remote GID =%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x\n ",p[0],
-        //        p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15]);
+        fprintf(stdout, "Remote GID =%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x\n ",p[0],
+                p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15]);
     }
     /* modify the QP to init */
     rc = modify_qp_to_init(res->qp);
-    if (rc) {
+    if (rc)
+    {
         fprintf(stderr, "change QP state to INIT failed\n");
         goto connect_qp_exit;
     }
     /* let the client post RR to be prepared for incoming messages */
-    if (config1->server_name) {
+    if (config.server_name)
+    {
         rc = post_receive(res);
-        if (rc) {
+        if (rc)
+        {
             fprintf(stderr, "failed to post RR\n");
             goto connect_qp_exit;
         }
     }
     /* modify the QP to RTR */
     rc = modify_qp_to_rtr(res->qp, remote_con_data.qp_num, remote_con_data.lid, remote_con_data.gid);
-    if (rc) {
+    if (rc)
+    {
         fprintf(stderr, "failed to modify QP state to RTR\n");
         goto connect_qp_exit;
     }
     rc = modify_qp_to_rts(res->qp);
-    if (rc) {
+    if (rc)
+    {
         fprintf(stderr, "failed to modify QP state to RTR\n");
         goto connect_qp_exit;
     }
@@ -829,7 +860,6 @@ static int connect_qp(struct resources *res, struct config_t *config1) {
     connect_qp_exit:
     return rc;
 }
-
 /******************************************************************************
 * Function: resources_destroy
 *
@@ -845,43 +875,49 @@ static int connect_qp(struct resources *res, struct config_t *config1) {
 * Description
 * Cleanup and deallocate all resources used
 ******************************************************************************/
-static int resources_destroy(struct resources *res) {
+static int resources_destroy(struct resources *res)
+{
     int rc = 0;
     if (res->qp)
-        if (ibv_destroy_qp(res->qp)) {
+        if (ibv_destroy_qp(res->qp))
+        {
             fprintf(stderr, "failed to destroy QP\n");
             rc = 1;
         }
     if (res->mr)
-        if (ibv_dereg_mr(res->mr)) {
+        if (ibv_dereg_mr(res->mr))
+        {
             fprintf(stderr, "failed to deregister MR\n");
             rc = 1;
         }
     if (res->buf)
         free(res->buf);
     if (res->cq)
-        if (ibv_destroy_cq(res->cq)) {
+        if (ibv_destroy_cq(res->cq))
+        {
             fprintf(stderr, "failed to destroy CQ\n");
             rc = 1;
         }
     if (res->pd)
-        if (ibv_dealloc_pd(res->pd)) {
+        if (ibv_dealloc_pd(res->pd))
+        {
             fprintf(stderr, "failed to deallocate PD\n");
             rc = 1;
         }
     if (res->ib_ctx)
-        if (ibv_close_device(res->ib_ctx)) {
+        if (ibv_close_device(res->ib_ctx))
+        {
             fprintf(stderr, "failed to close device context\n");
             rc = 1;
         }
     if (res->sock >= 0)
-        if (close(res->sock)) {
+        if (close(res->sock))
+        {
             fprintf(stderr, "failed to close socket\n");
             rc = 1;
         }
     return rc;
 }
-
 /******************************************************************************
 * Function: print_config
 *
@@ -897,7 +933,8 @@ static int resources_destroy(struct resources *res) {
 * Description
 * Print out config information
 ******************************************************************************/
-static void print_config(void) {
+static void print_config(void)
+{
     fprintf(stdout, " ------------------------------------------------\n");
     fprintf(stdout, " Device name : \"%s\"\n", config.dev_name);
     fprintf(stdout, " IB port : %u\n", config.ib_port);
@@ -924,7 +961,8 @@ static void print_config(void) {
 * Description
 * print a description of command line syntax
 ******************************************************************************/
-static void usage(const char *argv0) {
+static void usage(const char *argv0)
+{
     fprintf(stdout, "Usage:\n");
     fprintf(stdout, " %s start a server and wait for connection\n", argv0);
     fprintf(stdout, " %s <host> connect to server at <host>\n", argv0);
@@ -935,70 +973,6 @@ static void usage(const char *argv0) {
     fprintf(stdout, " -i, --ib-port <port> use port <port> of IB device (default 1)\n");
     fprintf(stdout, " -g, --gid_idx <git index> gid index to be used in GRH (default not used)\n");
 }
-
-void data_send(int id) {
-    int tid = id;
-    if(numa_flag)
-        pin_to_core(tid);
-    struct resources res;
-    int num = 0;
-    int we;
-    struct config_t config_local = {
-            config.dev_name,  /* dev_name */
-            config.server_name,  /* server_name */
-            config.tcp_port + tid, /* tcp_port */
-            config.ib_port,     /* ib_port */
-            config.gid_idx /* gid_idx */};
-    resources_init(&res);
-    /* create resources before using them */
-    if (resources_create(&res, &config_local)) {
-        fprintf(stderr, "failed to create resources\n");
-        return;
-    }
-    /* connect the QPs */
-    if (connect_qp(&res, &config_local)) {
-        fprintf(stderr, "failed to connect QPs\n");
-        return;
-    }
-    for (int i = 0; i < 1000; i++) {
-        int rc = post_receive(&res);
-        if (rc) {
-            fprintf(stderr, "failed to post RR\n");
-            return;
-        }
-        //printf("receive\n");
-    }
-    while (1) {
-        /* let the server post the sr */
-        if (!config.server_name)
-            //while(1){
-            if (post_send(&res, IBV_WR_SEND)) {
-                fprintf(stderr, "failed to post sr\n");
-                return;
-            }
-        num++;
-        //sleep(1);
-        /* in both sides we expect to get a completion */
-        if (poll_completion(&res)) {
-            fprintf(stderr, "poll completion failed\n");
-            return;
-        }
-        if (poll_completion(&res)) {
-            fprintf(stderr, "poll completion failed\n");
-            return;
-        }
-        we = post_receive(&res);
-        if (num == 100000) {
-            if (resources_destroy(&res)) {
-                fprintf(stderr, "failed to destroy resources\n");
-                //rc = 1;
-            }
-            printf("success\n");
-            return;
-        }
-    }
-}
-
 /******************************************************************************
 * Function: main
 *
@@ -1015,27 +989,27 @@ void data_send(int id) {
 * Description
 * Main program code
 ******************************************************************************/
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
     struct resources res;
     int rc = 1;
-    int thread_num =1;
     char temp_char;
     /* parse the command line parameters */
-    while (1) {
+    while (1)
+    {
         int c;
         static struct option long_options[] = {
-                {.name = "port", .has_arg = 1, .flag = NULL, .val = 'p'},
-                {.name = "ib-dev", .has_arg = 1, .flag = NULL, .val = 'd'},
-                {.name = "ib-port", .has_arg = 1, .flag = NULL, .val = 'i'},
-                {.name = "gid-idx", .has_arg = 1, .flag = NULL, .val = 'g'},
-                {.name = "thread-num", .has_arg = 1, .flag = NULL, .val = 't'},
-                {.name = "numa-flag", .has_arg = 1, .flag = NULL, .val = 'n'},
-                {.name = NULL, .has_arg = 0, .flag = NULL, .val = '\0'}
+                {.name = "port", .has_arg = 1, .val = 'p'},
+                {.name = "ib-dev", .has_arg = 1, .val = 'd'},
+                {.name = "ib-port", .has_arg = 1, .val = 'i'},
+                {.name = "gid-idx", .has_arg = 1, .val = 'g'},
+                {.name = NULL, .has_arg = 0, .val = '\0'}
         };
-        c = getopt_long(argc, argv, "p:d:i:g:t:n:", long_options, NULL);
+        c = getopt_long(argc, argv, "p:d:i:g:", long_options, NULL);
         if (c == -1)
             break;
-        switch (c) {
+        switch (c)
+        {
             case 'p':
                 config.tcp_port = strtoul(optarg, NULL, 0);
                 break;
@@ -1044,23 +1018,19 @@ int main(int argc, char *argv[]) {
                 break;
             case 'i':
                 config.ib_port = strtoul(optarg, NULL, 0);
-                if (config.ib_port < 0) {
+                if (config.ib_port < 0)
+                {
                     usage(argv[0]);
                     return 1;
                 }
                 break;
             case 'g':
                 config.gid_idx = strtoul(optarg, NULL, 0);
-                if (config.gid_idx < 0) {
+                if (config.gid_idx < 0)
+                {
                     usage(argv[0]);
                     return 1;
                 }
-                break;
-            case 't':
-                thread_num = strtoul(optarg, NULL, 0);
-                break;
-            case 'n':
-                numa_flag = strtoul(optarg, NULL, 0);
                 break;
             default:
                 usage(argv[0]);
@@ -1070,9 +1040,11 @@ int main(int argc, char *argv[]) {
     /* parse the last parameter (if exists) as the server name */
     if (optind == argc - 1)
         config.server_name = argv[optind];
-    if (config.server_name) {
-        printf("servername=%s\n", config.server_name);
-    } else if (optind < argc) {
+    if(config.server_name){
+        printf("servername=%s\n",config.server_name);
+    }
+    else if (optind < argc)
+    {
         usage(argv[0]);
         return 1;
     }
@@ -1080,36 +1052,34 @@ int main(int argc, char *argv[]) {
     print_config();
     /* init all of the resources, so cleanup will be easy */
     resources_init(&res);
-    int num = 0;
-    vector<thread> threads;
-    for (int i = 0; i < thread_num; i++)
-        threads.push_back(thread(data_send, i));
-    for (int i = 0; i < thread_num; i++)
-        threads[i].join();
-    goto main_exit;
     /* create resources before using them */
-    if (resources_create(&res, &config)) {
+    if (resources_create(&res))
+    {
         fprintf(stderr, "failed to create resources\n");
-      goto main_exit;
+        goto main_exit;
     }
     /* connect the QPs */
-    if (connect_qp(&res, &config)) {
+    if (connect_qp(&res))
+    {
         fprintf(stderr, "failed to connect QPs\n");
         goto main_exit;
     }
-    for (int i = 0; i < 1000; i++) {
+    int num = 0;
+    for(int i=0;i<1000;i++){
         rc = post_receive(&res);
-        if (rc) {
+        if (rc)
+        {
             fprintf(stderr, "failed to post RR\n");
             goto main_exit;
         }
         //printf("receive\n");
     }
-    while (1) {
+    while(1){
         /* let the server post the sr */
         if (!config.server_name)
             //while(1){
-            if (post_send(&res, IBV_WR_SEND)) {
+            if (post_send(&res, IBV_WR_SEND))
+            {
                 fprintf(stderr, "failed to post sr\n");
                 goto main_exit;
             }
@@ -1118,16 +1088,18 @@ int main(int argc, char *argv[]) {
         //printf("%d\n",num);
         //sleep(1);
         /* in both sides we expect to get a completion */
-        if (poll_completion(&res)) {
+        if (poll_completion(&res))
+        {
             fprintf(stderr, "poll completion failed\n");
             goto main_exit;
         }
-        if (poll_completion(&res)) {
+        if (poll_completion(&res))
+        {
             fprintf(stderr, "poll completion failed\n");
             goto main_exit;
         }
         int we = post_receive(&res);
-        if (num == 100000) {
+        if(num == 100000) {
             printf("success\n");
             goto main_exit;
         }
@@ -1138,7 +1110,8 @@ int main(int argc, char *argv[]) {
     /* after polling the completion we have the message in the client buffer too */
     if (config.server_name)
         fprintf(stdout, "Message is: '%s'\n", res.buf);
-    else {
+    else
+    {
         /* setup server buffer with read message */
         strcpy(res.buf, RDMAMSGR);
     }
@@ -1151,14 +1124,17 @@ int main(int argc, char *argv[]) {
     }
     /* Now the client performs an RDMA read and then write on server.
 Note that the server has no idea these events have occured */
-    if (config.server_name) {
+    if (config.server_name)
+    {
         /* First we read contens of server's buffer */
-        if (post_send(&res, IBV_WR_RDMA_READ)) {
+        if (post_send(&res, IBV_WR_RDMA_READ))
+        {
             fprintf(stderr, "failed to post SR 2\n");
             rc = 1;
             goto main_exit;
         }
-        if (poll_completion(&res)) {
+        if (poll_completion(&res))
+        {
             fprintf(stderr, "poll completion failed 2\n");
             rc = 1;
             goto main_exit;
@@ -1167,12 +1143,14 @@ Note that the server has no idea these events have occured */
         /* Now we replace what's in the server's buffer */
         strcpy(res.buf, RDMAMSGW);
         fprintf(stdout, "Now replacing it with: '%s'\n", res.buf);
-        if (post_send(&res, IBV_WR_RDMA_WRITE)) {
+        if (post_send(&res, IBV_WR_RDMA_WRITE))
+        {
             fprintf(stderr, "failed to post SR 3\n");
             rc = 1;
             goto main_exit;
         }
-        if (poll_completion(&res)) {
+        if (poll_completion(&res))
+        {
             fprintf(stderr, "poll completion failed 3\n");
             rc = 1;
             goto main_exit;
@@ -1189,13 +1167,13 @@ Note that the server has no idea these events have occured */
         fprintf(stdout, "Contents of server buffer: '%s'\n", res.buf);
     rc = 0;
     main_exit:
-    if (resources_destroy(&res)) {
+    if (resources_destroy(&res))
+    {
         fprintf(stderr, "failed to destroy resources\n");
-        //rc = 1;
+        rc = 1;
     }
     if (config.dev_name)
-        free((char *) config.dev_name);
+        free((char *)config.dev_name);
     fprintf(stdout, "\ntest result is %d\n", rc);
     return rc;
 }
-

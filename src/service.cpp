@@ -100,6 +100,8 @@ struct config_t config = {
 
 long *timelist;
 
+int numa_flag = 0;
+
 static int resources_destroy(struct resources *res);
 
 static void resources_init(struct resources *res);
@@ -937,7 +939,8 @@ static void usage(const char *argv0) {
 
 void data_send(int id) {
     int tid = id;
-    pin_to_core(tid);
+    if(numa_flag)
+        pin_to_core(tid);
     struct resources res;
     int num = 0;
     int we;
@@ -1019,9 +1022,10 @@ int main(int argc, char *argv[]) {
                 {.name = "ib-port", .has_arg = 1, .flag = NULL, .val = 'i'},
                 {.name = "gid-idx", .has_arg = 1, .flag = NULL, .val = 'g'},
                 {.name = "thread-num", .has_arg = 1, .flag = NULL, .val = 't'},
+                {.name = "numa-flag", .has_arg = 1, .flag = NULL, .val = 'n'},
                 {.name = NULL, .has_arg = 0, .flag = NULL, .val = '\0'}
         };
-        c = getopt_long(argc, argv, "p:d:i:g:", long_options, NULL);
+        c = getopt_long(argc, argv, "p:d:i:g:t:n:", long_options, NULL);
         if (c == -1)
             break;
         switch (c) {
@@ -1047,6 +1051,9 @@ int main(int argc, char *argv[]) {
                 break;
             case 't':
                 thread_num = strtoul(optarg, NULL, 0);
+                break;
+            case 'n':
+                numa_flag = strtoul(optarg, NULL, 0);
                 break;
             default:
                 usage(argv[0]);
